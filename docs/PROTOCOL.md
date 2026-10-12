@@ -31,23 +31,29 @@ Level: synapse. Transaction id: any value seems accepted (echoed), not fixed 0x1
 | 00/82 | serial | reply ASCII `XXXXXXXXXXXXXXX` | synapse |
 | 00/04 | set device mode | `03 00` = driver mode (Synapse takes over) | synapse |
 | 00/84 | get device mode | | synapse |
-| 00/bf, 00/c5 | dongle pairing info | reply contains PID `00 b7` | synapse |
+| 00/bf | multi-device wireless status | count, then status + PID per device | synapse |
+| 00/c5 | primary device | type + PID | synapse |
 | 04/85 | get current DPI | `01` -> `01 XXXX YYYY 00 00` (BE) | synapse |
-| 04/86 | get DPI stages | reply `01 <active> <count>` then per stage `<id 1-based> X X Y Y 00 00` | synapse |
-| 04/06 | set DPI stages | `01 <active> <count>` then per stage `<id 0-based> XXXX YYYY 00 00`. `01` = persistent (VARSTORE) | synapse |
+| 04/86 | get DPI stages | reply `01 <active> <count>` then per stage `<id 1-based> X X Y Y ZZ ZZ` | synapse |
+| 04/06 | set DPI stages | `<profile> <active> <count>` then per stage `<id 0-based> XXXX YYYY ZZZZ` (Z-DPI, 0) | synapse |
 | 07/80 | battery | reply `00 ff` = full | synapse |
 | 07/84 | charging | reply `00 01` | synapse |
 | 07/83 | idle timeout | reply `01 2c` = 300 s | synapse |
-| 07/01, 07/81 | set/get low-battery threshold (?) | `4d` | synapse |
+| 07/01, 07/81 | set/get battery critical level | ceil(pct * 255 / 100); `4d` = 30% | synapse |
 | 0f/80, 0f/84 | RGB matrix / brightness | status 03: no RGB on this mouse | synapse |
-| 02/8c | read button bind | `01 <button> <layer>` -> `01 <button> 00 <cat> <len> <value...>` | synapse |
-| 02/0c | write button bind | `01 <button> 01 <cat> <len> <value...>` | synapse |
-| 00/0e | set polling rate | `01 <rate>`: 01 = 1000 Hz, 02 = 500 Hz | synapse |
+| 02/8c | read button bind | `01 <button> <layer>` -> `01 <button> <layer> <fn> <len> <data...>` | synapse |
+| 02/0c | write button bind | `<profile> <button> <layer> <fn> <len> <data...>` | synapse |
+| 00/0e | set polling rate | `<profile> <rate>`: 01=1000, 02=500, 03=333, 04=250, 05=200, 08=125, 0a=100 | synapse |
 | 00/8e | get polling rate | `01 00` -> `01 <rate>` | synapse |
-| 0b/03 | set lift-off mode | `00 04 <mode>`: 00 preset, 01 asymmetric | synapse |
+| 0b/03 | set lift-off mode | `00 04 <mode>`: 00 preset, 01 asymmetric. `00 04` = calibration class 0, sensor 4 | synapse |
 | 0b/0b | lift-off preset / mode param | preset: `00 04 01 <lvl>` (00 low, 01 medium, 02 high). asymmetric: `00 04 04 00` | synapse |
 | 0b/05 | asymmetric lift / land distance | `00 04 <lift> <land>` raw units, land < lift | synapse |
-| 00/86, 00/87, 00/93, 05/80, 05/81, 05/8a | unknown | | synapse |
+| 00/86, 00/87, 00/93 | edition info, extended fw, dock fw | | synapse |
+| 05/80, 05/81, 05/8a | profile count, profile ids, max profiles | | synapse |
+
+First arg `01` on DPI / polling / bind commands is the profile id (1 onboard slot on this
+mouse), not a VARSTORE flag. Synapse never sends 0; what 0 does is unknown. Full Synapse
+findings, bind function table and modifier mask: `docs/SYNAPSE.md`.
 
 Factory DPI stages: 400, 800, 1600 (active), 3200, 6400.
 
@@ -60,8 +66,11 @@ X 1000 / Y 1100 = `03 e8 04 4c`). Synapse also sent a single-stage form once
 Buttons: 01 left, 02 right, 03 wheel, 04 back, 05 forward, 09 scroll up, 0a scroll down,
 60 bottom DPI button.
 
-Categories: 01 mouse (len 01, value = button), 02 keyboard (len 02, `<modifier> <HID usage>`),
-06 DPI (`06 01 06` = cycle).
+Functions: 01 mouse (len 01, value = button), 02 keyboard (len 02, `<modifier> <HID usage>`),
+06 DPI (`06 01 06` = cycle). Rest in `docs/SYNAPSE.md`.
+
+Byte 2 = layer: 00 normal, 01 Hypershift (synapse source + Synapse log). Synapse's
+first-connect rewrite wrote the identity map to Hypershift; user F13/F14 went to normal.
 
 `cap:settings01`: back = F13 `01 04 00 02 02 00 68`, forward = F14 `01 05 00 02 02 00 69`.
 Mouse replied status 02.
@@ -69,14 +78,11 @@ Mouse replied status 02.
 Factory layer 0 is identity (left=left ... DPI button=DPI cycle). Layer 1 (Hypershift?)
 reads empty on a fresh mouse.
 
-Open: byte 2. Synapse's first-connect default rewrite used `01`; after that both read
-layers 00 and 01 return the bind with `01`. The user binds in `cap:settings01` used `00`.
-fang copies Synapse: `00` for user binds. Settle with a read-back after fang writes.
-
-`fang status` after Synapse closed (hw): L0 back/forward = F13/F14 with byte 2 `00`;
-L1 back/forward = plain mouse 04/05 with `00`; every other button reads `01` on both layers.
-Hypothesis: `01` = layer 1 mirrors layer 0, `00` = layer 0 only (layer 1 falls back to
-default). Check against Synapse source in the REA pass.
+Open (hw): reply byte 2 does not always echo the requested layer. `fang status` (request
+sends layer at args[2], checked) after Synapse closed: L0 back/forward = F13/F14 with reply
+byte 2 `00`; L1 back/forward = mouse 04/05 with `00`; every other button replies `01` on
+both layers. Synapse's parser assumes reply byte 2 = requested layer. Settle with a
+write + read-back on both layers when writes are allowed.
 
 ## Reads confirmed on hardware (`fang status`)
 
