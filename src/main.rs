@@ -301,6 +301,8 @@ fn key_name(usage: u8) -> String {
         0x3a..=0x45 => format!("F{}", usage - 0x39),
         0x68..=0x73 => format!("F{}", usage - 0x68 + 13),
         0x53 => "NumLock".to_string(),
+        0x59..=0x61 => format!("Num{}", usage - 0x58),
+        0x62 => "Num0".to_string(),
         _ => "?".to_string(),
     }
 }
