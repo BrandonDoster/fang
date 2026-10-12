@@ -73,6 +73,19 @@ Open: byte 2. Synapse's first-connect default rewrite used `01`; after that both
 layers 00 and 01 return the bind with `01`. The user binds in `cap:settings01` used `00`.
 fang copies Synapse: `00` for user binds. Settle with a read-back after fang writes.
 
+`fang status` after Synapse closed (hw): L0 back/forward = F13/F14 with byte 2 `00`;
+L1 back/forward = plain mouse 04/05 with `00`; every other button reads `01` on both layers.
+Hypothesis: `01` = layer 1 mirrors layer 0, `00` = layer 0 only (layer 1 falls back to
+default). Check against Synapse source in the REA pass.
+
+## Reads confirmed on hardware (`fang status`)
+
+00/84 mode, 00/8e polling, 04/85, 04/86, 02/8c, 07/80, 07/83, 07/84, and lift-off reads
+(write id | 0x80, same args): 0b/83 -> `00 04 <mode>`, 0b/8b -> `00 04 04 00`,
+0b/85 -> `00 04 04 00 <lift> <land>` (note extra `04 00` vs the write).
+
+Device mode reads `00` normal with Synapse closed: driver mode does not stick.
+
 ## Lift-off
 
 Asymmetric: raw byte = Synapse slider value - 1 (`cap:settings02`: lift 2/13/26 =
