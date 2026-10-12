@@ -1,1 +1,4 @@
 /target
+
+# Raw USB captures hold the device serial and other devices on the hub; keep local
+captures/*.pcapng

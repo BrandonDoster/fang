@@ -141,7 +141,7 @@ the firmware checking it.
 **02/8c reply byte 2 not echoing the requested layer.** This is firmware behaviour, not a
 transaction-id or stale-read effect.
 
-- In `captures/settings03.pcapng` (frames 351/354), Synapse uses rotating ids and gets matching ids
+- In `captures/settings03.txt` (frames 351/354), Synapse uses rotating ids and gets matching ids
   back. A layer-00 read of "right" still replies with byte 2 = 01.
 - On hardware, byte 2 holds the layer of the most recent write to that button, on both layer reads.
   The bind data that comes back is correct for the layer that was asked for. Full write-up:

@@ -1,8 +1,9 @@
 # DeathAdder V3 Pro protocol notes
 
-Source of every row is listed. `cap:synapseInstall` = `captures/synapseInstall.pcapng`
-(Synapse first connect after install, no user changes yet), decoded with
-`uv run tools/razer_reports.py <capture>`.
+Source of every row is listed. `cap:synapseInstall` = `captures/synapseInstall.txt`
+(Synapse first connect after install, no user changes yet), decoded from a USBPcap capture with
+`uv run tools/razer_reports.py <capture>`. The raw `.pcapng` files stay local: they hold the
+device serial (shown here as `XXXXXXXXXXXXXXX`) and other devices on the hub.
 
 Levels: **guess** (ideas from OpenRazer/Snakecharmer), **synapse** (seen Synapse send it),
 **hw** (fang sent it and the mouse behaved).
