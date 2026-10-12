@@ -203,6 +203,8 @@ impl Status {
 pub struct Mouse {
     dev: hidapi::HidDevice,
     tid: Cell<u8>,
+    /// USB product id: 00B6 wired, 00B7 wireless dongle.
+    pub pid: u16,
 }
 
 impl Mouse {
@@ -213,7 +215,7 @@ impl Mouse {
             .device_list()
             .find(|d| d.vendor_id() == RAZER_VID && d.interface_number() == 0)
             .ok_or("no Razer mouse found")?;
-        Ok(Mouse { dev: info.open_device(&api)?, tid: Cell::new(0) })
+        Ok(Mouse { dev: info.open_device(&api)?, tid: Cell::new(0), pid: info.product_id() })
     }
 
     pub fn info(&self) -> Result<Info> {
@@ -369,14 +371,23 @@ pub fn devices() -> Result<Vec<hidapi::DeviceInfo>> {
     Ok(api.device_list().filter(|d| d.vendor_id() == RAZER_VID).cloned().collect())
 }
 
-/// HID usage for `A`-`Z`, `F1`-`F24`, or raw `0xNN`.
+const NAMED_KEYS: [(&str, u8); 6] =
+    [("Enter", 0x28), ("Esc", 0x29), ("Tab", 0x2b), ("Space", 0x2c), ("NumLock", 0x53), ("Num0", 0x62)];
+
+/// HID usage for `A`-`Z`, `0`-`9`, `F1`-`F24`, `Num0`-`Num9`, a few named keys, or raw `0xNN`.
 pub fn key_usage(k: &str) -> Option<u8> {
     if let Some(h) = k.strip_prefix("0x") {
         return u8::from_str_radix(h, 16).ok();
     }
+    if let Some(&(_, u)) = NAMED_KEYS.iter().find(|(n, _)| n.eq_ignore_ascii_case(k)) {
+        return Some(u);
+    }
     let k = k.to_ascii_uppercase();
     match k.as_bytes() {
         [c @ b'A'..=b'Z'] => Some(c - b'A' + 0x04),
+        [b'0'] => Some(0x27),
+        [c @ b'1'..=b'9'] => Some(c - b'1' + 0x1e),
+        [b'N', b'U', b'M', c @ b'1'..=b'9'] => Some(c - b'1' + 0x59),
         [b'F', n @ ..] => match std::str::from_utf8(n).ok()?.parse::<u8>().ok()? {
             n @ 1..=12 => Some(0x3a + n - 1),
             n @ 13..=24 => Some(0x68 + n - 13),
@@ -386,14 +397,18 @@ pub fn key_usage(k: &str) -> Option<u8> {
     }
 }
 
+/// Inverse of `key_usage`; unknown usages come back as `0xNN`.
 pub fn key_name(usage: u8) -> String {
+    if let Some(&(n, _)) = NAMED_KEYS.iter().find(|(_, u)| *u == usage) {
+        return n.to_string();
+    }
     match usage {
         0x04..=0x1d => ((b'A' + usage - 0x04) as char).to_string(),
+        0x1e..=0x26 => ((b'1' + usage - 0x1e) as char).to_string(),
+        0x27 => "0".to_string(),
         0x3a..=0x45 => format!("F{}", usage - 0x39),
         0x68..=0x73 => format!("F{}", usage - 0x68 + 13),
-        0x53 => "NumLock".to_string(),
         0x59..=0x61 => format!("Num{}", usage - 0x58),
-        0x62 => "Num0".to_string(),
         _ => format!("0x{usage:02x}"),
     }
 }
@@ -467,6 +482,16 @@ mod tests {
         assert_eq!(key_usage("0x59"), Some(0x59));
         assert_eq!(key_usage("F25"), None);
         assert_eq!(key_name(0x59), "Num1");
+        // Every name the GUI offers must round-trip.
+        let names = (1..=24).map(|n| format!("F{n}"))
+            .chain((b'A'..=b'Z').map(|c| (c as char).to_string()))
+            .chain((0..=9).map(|n| n.to_string()))
+            .chain((0..=9).map(|n| format!("Num{n}")))
+            .chain(["Space", "Enter", "Esc", "Tab", "NumLock"].map(String::from));
+        for n in names {
+            let u = key_usage(&n).unwrap_or_else(|| panic!("{n}"));
+            assert_eq!(key_name(u), n);
+        }
     }
 
     #[test]

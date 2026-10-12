@@ -17,6 +17,19 @@ fang polling 1000
 fang liftoff 13 12                           # asymmetric lift / land, or 1-3 for a preset
 ```
 
+## GUI
+
+`src-tauri/` + `web/` is a small Tauri app over the same library (about 9 MB, uses the
+WebView2 that ships with Windows). It reads the mouse, you edit, Apply writes and reads back,
+you close it. Nothing stays running.
+
+```
+cd src-tauri
+cargo tauri build --no-bundle        # -> src-tauri/target/release/fang-gui.exe
+cargo test -- --include-ignored      # includes a no-change round trip against the mouse
+node ../tools/gui-test.mjs           # page logic against a fake mouse
+```
+
 `fang` with no arguments prints the full usage. The protocol lives in `src/lib.rs`
 (`fang::Mouse`); the CLI and a future GUI are thin layers over it.
 
