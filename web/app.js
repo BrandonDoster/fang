@@ -33,7 +33,7 @@ const MOUSE_SVG = `
 <path d="M141.6 36 C143.5 70 146 120 148.5 150 C149 158 152 162 157 162 L265 162 C270 162 272.6 158 273 150 C275 118 277.5 75 279.5 42" fill="none" stroke="#3A414A" stroke-width="1.2"/>
 <path d="M209.3 95.6 L209.3 162" stroke="#3A414A" stroke-width="1.2"/>
 <rect x="195.1" y="18" width="27.6" height="75.4" rx="7" fill="#15181C" stroke="#3A414A"/>
-<rect x="205" y="30.5" width="9" height="2.6" rx="1.3" fill="#8EE3A4"/>
+<rect x="205" y="30.5" width="9" height="2.6" rx="1.3" style="fill: var(--ok)"/>
 <rect x="198.1" y="41.1" width="22.4" height="50.8" rx="5" fill="#262B31" stroke="#5A636E"/>
 <path d="M201 47 L217.6 47 M201 52 L217.6 52 M201 57 L217.6 57 M201 62 L217.6 62 M201 67 L217.6 67 M201 72 L217.6 72 M201 77 L217.6 77 M201 82 L217.6 82 M201 87 L217.6 87" stroke="#3A414A" stroke-width="1"/>
 <rect x="131.5" y="103" width="8" height="45" rx="3" fill="#262B31" stroke="#5A636E"/>
@@ -219,7 +219,7 @@ function headerHtml() {
   const i = state.info;
   const meta = i
     ? `<span>${esc(i.connection)}</span><span class="f-mono">FW ${esc(i.firmware)}</span>
-       <span class="batt"><svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true"><rect x="0.5" y="0.5" width="18" height="11" rx="2.5" fill="none" stroke="currentColor"/><rect x="19.5" y="3.5" width="2" height="5" rx="1" fill="currentColor"/><rect x="2" y="2" width="${(15 * i.battery / 100).toFixed(1)}" height="8" rx="1.5" fill="#8EE3A4"/></svg>
+       <span class="batt"><svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true"><rect x="0.5" y="0.5" width="18" height="11" rx="2.5" fill="none" stroke="currentColor"/><rect x="19.5" y="3.5" width="2" height="5" rx="1" fill="currentColor"/><rect x="2" y="2" width="${(15 * i.battery / 100).toFixed(1)}" height="8" rx="1.5" style="fill: var(--batt)"/></svg>
        <span class="f-mono">${i.battery}%</span>${i.charging ? '<span>charging</span>' : ''}</span>`
     : '';
   return `<header><div class="brand"><img src="wordmark.png" alt="fang">${i ? `<span class="dev">${esc(i.name)}</span>` : ''}</div><div class="meta">${meta}</div></header>`;

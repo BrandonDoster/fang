@@ -1,7 +1,7 @@
 :root {
   --bg: #0F1113; --panel: #16191D; --raise: #1D2126; --line: #2A2F36; --line-hi: #3A414A;
-  --text: #E7EAED; --muted: #9BA3AC; --ink: #08131C; --accent: #6CC4FF;
-  --pending: #F2B14C; --err: #FF8A80; --ok: #8EE3A4;
+  --text: #E7EAED; --muted: #9BA3AC; --ink: #08131C; --brand: #9CF464; --accent: var(--brand);
+  --pending: #F2B14C; --err: #FF8A80; --ok: var(--brand); --batt: var(--brand);
   --sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   --mono: 'Cascadia Mono', Consolas, ui-monospace, monospace;
   color-scheme: dark;
