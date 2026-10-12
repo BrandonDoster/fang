@@ -101,10 +101,18 @@ Device mode reads `00` normal with Synapse closed: driver mode does not stick.
 Lift-off read-back: 0b/83 replies `00 04 01` in both modes, so it does not show the mode.
 0b/8b does: `00 04 01 <tracking-1>` symmetric, `00 04 04 00` asymmetric.
 
-Bind reads: after fang wrote left on layer 0, both layer reads of left reply byte 2 `00`
-(before: `01`). The layer 1 read of back still replies mouse 04 while layer 0 has F13. So the
-reply byte 2 tracks the last write to that slot, and the read's layer argument does
-something. Exact rule open; layer 0 write + read-back is reliable.
+## Hypershift (`cap:settings03` + hw)
+
+- Hypershift key: fn `0c`, len 01, data `01`. Synapse writes it on **both** layers for the
+  same button (`01 04 00 0c 01 01` and `01 04 01 0c 01 01`), so the button still acts as
+  Hypershift while the layer is active. fang should do the same.
+- Hypershift bind: same 02/0c with layer `01`, e.g. `01 05 01 02 02 00 53` (forward = NumLock).
+- Synapse resends every non-default bind on each change.
+
+Bind reads (settled, hw): the read's layer argument selects the layer, and the values are
+per layer (fang wrote layer 1 forward = F15, layer 0 forward stayed F14). Reply byte 2 is
+NOT the requested layer: it is the layer of the last write to that button, on both reads.
+Ignore it; compare fn/len/data only. Synapse ignores it too.
 
 ## Lift-off
 

@@ -49,7 +49,7 @@ Only the DeathAdder V3 Pro (DAV3P) is available locally.
 | device class | `rzDevice25DualLinkMouse`; report length 90 + report id; interface 0 | `core` `this.name = "rzDevice25DualLinkMouse"`, `log` "claimInterface:0" | read+log |
 | DPI | min 100, max 30000, step 50, separate X/Y | DeviceInfo `minDPI`, `maxDPI: 3e4`, `dpiStep: 50`, `supportXYDPI` | read |
 | polling (UI list) | 125, 500, 1000 | `mwmain` / `uimain` list `{content:"125"}…{content:"1000"}` | read |
-| HyperPolling | not enabled for 182: no `highSpeedPollingRate` feature, and wireless is clamped to 1000 unless it is a HyperPolling device | `mwmain` injector, `core` `isHyperpollingDevice` | read |
+| HyperPolling | `highSpeedPollingRate: yes` is registered, but without `isHyperpollingDevice`. Synapse switches to 00/40 only when the mouse is on a HyperPolling dongle (dual-link connected and "hyperPollingMaster"). On the stock 00B7 dongle it uses 00/0e, and wireless is clamped to 1000 | `mwmain` `useFeature("highSpeedPollingRate","yes")`, `core` `isHyperpollingDevice` / `hyperPollingMaster` | read (corrected: the first pass missed the `useFeature` calls) |
 | onboard memory | `isOBMDevice: true`, `OBMSlots: 1`, `hasHardwareProfileSwitch: true` | DeviceInfo `OBMSpecs` | read |
 | OBM features | DPI, polling, brightness. No macros | `OBMSpecs.supportedFeature` (`macros: !1`) | read |
 | bind groups | disable, hypershift, keyboard, mouse, multimedia, sensitivity (DPI_Clutch, DPI_Up, DPI_Down, DPI_CycleUp, DPI_CycleDown). UI also offers repeat-scroll | `OBMSpecs.supportedMappings`, `extendSupportMappings` | read |
@@ -57,10 +57,11 @@ Only the DeathAdder V3 Pro (DAV3P) is available locally.
 | lift-off | `orca5CalibrationEngine` (asymmetric cut-off, "up to 26 levels"). Defaults: trackingDistance 2, liftOff 13, landing 12 | `log` "Supported flags: [\"orca5CalibrationEngine\"]", `mwmain` `calibration` defaults, `installer-manifest.json` description | read+log |
 | low battery warning | 5 % UI toast. The 07/01 threshold write is separate (§3) | `mwmain` `hasLowBatteryValue.config.level: 5` | read |
 
-> Gotcha: `mwmain` hard-codes `calibrationInterfaces: { smartPixartCalibrationEngine }`, but at
-> runtime the feature list is overridden to `orca5CalibrationEngine`. The log says
-> "smartPixartCalibrationEngine not in feature flag list! Supported flags: [orca5CalibrationEngine]".
-> The orca5 byte sequence is the one that matches `cap:settings02`. Ignore the smartPixart tables.
+> Gotcha: `mwmain` has an injector default of `calibrationInterfaces: { smartPixartCalibrationEngine }`.
+> The module's own startup then registers `useFeature("calibrationInterfaces","orca5CalibrationEngine")`,
+> and the log confirms orca5: "smartPixartCalibrationEngine not in feature flag list! Supported flags:
+> [orca5CalibrationEngine]". The orca5 byte sequence is the one that matches `cap:settings02`.
+> For every product, read the `useFeature(...)` calls, not the injector defaults.
 
 ### Generic mouse fwID table (all mice, `uimain`)
 
@@ -102,8 +103,54 @@ Conf **read**. Evidence: `core` `_getTransactionId` in `rzDevice25`, `rzDevice25
 | rzDevice25Linker* (dongle hubs) | 0xE0 \| (00..1e) |
 | DualLinkMouse, 00/41 (pairing mode) and 00/46 (device scan) only | the id is also OR-ed with 0x80 |
 
-The firmware only echoes the id. Nothing in Synapse requires a particular value. **inferred**,
-consistent with PROTOCOL.md.
+**Why it rotates.** In Synapse the id is only used to match replies on the host side. Nothing shows
+the firmware checking it.
+
+- Reply matching (`core` `_getUSBTransferInResult`, conf **read**). After SET_REPORT, Synapse waits
+  `sleepTimeBetweenOutIn` (25 ms on DAV3P, per `log`). It then does GET_REPORT up to `maxRetryIn`
+  times (10), 25 ms apart. It accepts a reply only when all three hold:
+  - reply `[1]` == sent `[1]`
+  - reply `[6]` == sent class
+  - reply `[7]` == sent id
+
+  On any mismatch it logs "different transId" or "different command" and re-sends the **same**
+  buffer, same id, up to `maxRetryOut` times (20).
+- Status byte `[0]` handling, conf **read** (`core` and shell `protocol25Const.js`):
+
+  | status | name | what Synapse does |
+  |---|---|---|
+  | 00 | new command, not processed yet | re-send |
+  | 01 | busy | GET again |
+  | 02 | ok | accept |
+  | 03 | failed | stop, fail |
+  | 04 | timeout | stop, fail |
+  | 05 | not supported | stop, fail |
+
+  PROTOCOL.md's "03 = fail/unsupported" should be split into 03 failed and 05 not supported.
+- The Electron shell's transport (`electron/Protocol/protocol25.js`) checks only status and
+  class/id (`custom_command_mismatch: 225`). It never looks at byte 1.
+- Both layers serialize access: `navigator.locks` per device, and an HID mutex
+  (`hid.sendFeatureReportMutex`) shared across processes. So several Synapse tabs/processes can talk
+  to one dongle. The rotating id lets a sender reject a reply that belongs to someone else's
+  request, or to its own earlier request. **inferred** from the code's structure.
+- The high bits differ by device class: 0x80 for the dual-link keyboard, 0xE0 for Linker dongles,
+  and 0x80 on the mouse's pairing/scan commands. On shared HyperSpeed dongles the top bits likely
+  route the request to the keyboard, the mouse or the dongle itself. **inferred**: the firmware
+  side is not visible. A fixed 0x1F keeps the high bits 0, i.e. it targets the mouse, which fits
+  fang's working reads.
+
+**02/8c reply byte 2 not echoing the requested layer.** Synapse has no layer-specific quirk handling.
+It takes reply byte 2 as the mode. A likely cause with a fixed id:
+
+1. fang reads layer 1, then layer 0, both as 02/8c.
+2. The GET_REPORT for the second request arrives before the firmware has processed it (status
+   00/01).
+3. The buffer still holds the previous 02/8c reply. It has the same class, id and transaction id,
+   so the host can't tell it is stale.
+
+Synapse catches this case: the id has moved on, and it also retries while status is 00/01. fang
+should (a) check reply status == 02 and retry GET on 00/01, and (b) rotate the id, or at least
+check that reply args `[0..2]` match the request. **inferred**: not verified on hardware.
 
 ### Byte 0 of DPI / polling / bind args = profile id
 

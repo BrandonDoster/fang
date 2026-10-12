@@ -33,7 +33,8 @@ const USAGE: &str = "usage:
   fang devices | info | status
   fang bind <button> <action> [hypershift]
       button: left right wheel back forward up down dpi
-      action: mouse:<1-5|9|10> | key:<A-Z|F1-F24> | dpi-cycle | none
+      action: mouse:<1-5|9|10> | key:<A-Z|F1-F24|0xNN usage> | dpi-cycle | hypershift | none
+      hypershift = the layer used while the hypershift button is held
   fang dpi <stage>,<stage>,... [active N]   stage = 800 or 1000x1100 (100..30000, step 50)
   fang liftoff <1-3>                        preset: 1 low, 2 medium, 3 high
   fang liftoff <lift 2-26> <land 1-25>      asymmetric, land < lift";
@@ -56,6 +57,7 @@ fn bind(args: &[&str]) -> Result<()> {
         Some(("mouse", n)) => (0x01, vec![n.parse()?]),
         Some(("key", k)) => (0x02, vec![0x00, key_usage(k).ok_or_else(|| format!("unknown key {k}"))?]),
         None if action == "dpi-cycle" => (0x06, vec![0x06]),
+        None if action == "hypershift" => (0x0c, vec![0x01]),
         None if action == "none" => (0x00, vec![]),
         _ => return Err(format!("unknown action {action}").into()),
     };
@@ -165,6 +167,9 @@ fn pad(head: &[u8], size: usize) -> Vec<u8> {
 }
 
 fn key_usage(k: &str) -> Option<u8> {
+    if let Some(h) = k.strip_prefix("0x") {
+        return u8::from_str_radix(h, 16).ok();
+    }
     let k = k.to_ascii_uppercase();
     match k.as_bytes() {
         [c @ b'A'..=b'Z'] => Some(c - b'A' + 0x04),
@@ -284,6 +289,7 @@ fn describe_bind(b: &[u8]) -> String {
         (0x01, [v]) => format!("mouse button {v:02x}"),
         (0x02, [m, k]) => format!("key {} (usage {k:02x}, mod {m:02x})", key_name(*k)),
         (0x06, _) => "dpi cycle".to_string(),
+        (0x0c, _) => "hypershift (hold)".to_string(),
         _ => "unknown".to_string(),
     };
     format!("{what:<34} raw {}", hex(b))
@@ -294,6 +300,7 @@ fn key_name(usage: u8) -> String {
         0x04..=0x1d => ((b'A' + usage - 0x04) as char).to_string(),
         0x3a..=0x45 => format!("F{}", usage - 0x39),
         0x68..=0x73 => format!("F{}", usage - 0x68 + 13),
+        0x53 => "NumLock".to_string(),
         _ => "?".to_string(),
     }
 }
