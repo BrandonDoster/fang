@@ -14,7 +14,7 @@ Synapse sends SET_REPORT, then GET_REPORT for the reply.
 
 | byte | field |
 |---|---|
-| 0 | status: host sends 00; mouse replies 02 ok, 03 fail/unsupported |
+| 0 | status: host sends 00; mouse replies 00 not processed yet (re-send), 01 busy (re-read), 02 ok, 03 failed, 04 timeout, 05 not supported |
 | 1 | transaction id. Synapse counts 00..1E and wraps; mouse echoes it |
 | 5 | args size |
 | 6 | command class |
