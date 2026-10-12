@@ -92,6 +92,20 @@ write + read-back on both layers when writes are allowed.
 
 Device mode reads `00` normal with Synapse closed: driver mode does not stick.
 
+## Writes confirmed on hardware (fang, fixed tid 0x1F, read-back matched)
+
+- 02/0c binds on layer 0: back/forward = mouse 04/05, then F13/F14; left = mouse 01.
+- 04/06 DPI: factory 400/800/1600*/3200/6400, then 1000x1100*/800/1600/3200/6400.
+- Lift-off: preset low/medium/high, asymmetric 13/12 and 26/25.
+
+Lift-off read-back: 0b/83 replies `00 04 01` in both modes, so it does not show the mode.
+0b/8b does: `00 04 01 <tracking-1>` symmetric, `00 04 04 00` asymmetric.
+
+Bind reads: after fang wrote left on layer 0, both layer reads of left reply byte 2 `00`
+(before: `01`). The layer 1 read of back still replies mouse 04 while layer 0 has F13. So the
+reply byte 2 tracks the last write to that slot, and the read's layer argument does
+something. Exact rule open; layer 0 write + read-back is reliable.
+
 ## Lift-off
 
 Asymmetric: raw byte = Synapse slider value - 1 (`cap:settings02`: lift 2/13/26 =
