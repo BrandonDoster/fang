@@ -16,6 +16,7 @@ fn main() {
         Some("bind") => bind(&rest),
         Some("dpi") => dpi(&rest),
         Some("liftoff") => liftoff(&rest),
+        Some("polling") => polling(&rest),
         _ => {
             eprintln!("{USAGE}");
             std::process::exit(2);
@@ -36,6 +37,7 @@ const USAGE: &str = "usage:
       action: mouse:<1-5|9|10> | key:<A-Z|F1-F24|0xNN usage> | dpi-cycle | hypershift | none
       hypershift = the layer used while the hypershift button is held
   fang dpi <stage>,<stage>,... [active N]   stage = 800 or 1000x1100 (100..30000, step 50)
+  fang polling <125|500|1000>
   fang liftoff <1-3>                        preset: 1 low, 2 medium, 3 high
   fang liftoff <lift 2-26> <land 1-25>      asymmetric, land < lift";
 
@@ -115,6 +117,21 @@ fn dpi_value(s: &str) -> Result<u16> {
         return Err(format!("dpi {v}: must be 100..30000 in steps of 50").into());
     }
     Ok(v)
+}
+
+/// Set polling rate, then read it back. Rates the V3 Pro allows per Synapse's device module.
+fn polling(args: &[&str]) -> Result<()> {
+    let code = match args {
+        ["1000"] => 0x01,
+        ["500"] => 0x02,
+        ["125"] => 0x08,
+        _ => return Err(USAGE.into()),
+    };
+    let mouse = Mouse::open()?;
+    mouse.query(0x00, 0x0e, &[PROFILE, code])?;
+    let r = mouse.query(0x00, 0x8e, &[PROFILE, 0])?;
+    println!("read  {}", hex(&r));
+    check(&r, &[PROFILE, code])
 }
 
 /// Set lift-off (preset or asymmetric), then read it back.
