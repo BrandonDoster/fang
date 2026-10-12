@@ -22,9 +22,11 @@ img = Image.fromarray((np.dstack([color, a]) * 255).round().astype(np.uint8), "R
 ys, xs = np.nonzero(a > 0.02)
 box = (xs.min(), ys.min(), xs.max() + 1, ys.max() + 1)
 img = img.crop(box)
-pad = int(max(img.size) * 0.04)  # small margin so the glow is not clipped
-# Icons are square; "keep" as a third arg keeps the art's own aspect (wordmarks, badges).
-w, h = (img.width + 2 * pad, img.height + 2 * pad) if sys.argv[3:] == ["keep"] else (max(img.size) + 2 * pad,) * 2
+# Icons are square and edge-to-edge (the crop box already holds the glow; every pixel counts at 24px).
+# "keep" as a third arg keeps the art's own aspect with a small margin (wordmarks, badges).
+keep = sys.argv[3:4] == ["keep"]
+pad = int(max(img.size) * 0.04) if keep else 0
+w, h = (img.width + 2 * pad, img.height + 2 * pad) if keep else (max(img.size),) * 2
 canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
 canvas.paste(img, ((w - img.width) // 2, (h - img.height) // 2))
 canvas.resize((1024, round(1024 * h / w)), Image.LANCZOS).save(dst)
