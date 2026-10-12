@@ -222,7 +222,7 @@ function headerHtml() {
        <span class="batt"><svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true"><rect x="0.5" y="0.5" width="18" height="11" rx="2.5" fill="none" stroke="currentColor"/><rect x="19.5" y="3.5" width="2" height="5" rx="1" fill="currentColor"/><rect x="2" y="2" width="${(15 * i.battery / 100).toFixed(1)}" height="8" rx="1.5" fill="#8EE3A4"/></svg>
        <span class="f-mono">${i.battery}%</span>${i.charging ? '<span>charging</span>' : ''}</span>`
     : '';
-  return `<header><div class="brand"><span class="f-mono">fang</span>${i ? `<span class="dev">${esc(i.name)}</span>` : ''}</div><div class="meta">${meta}</div></header>`;
+  return `<header><div class="brand"><img src="wordmark.png" alt="fang">${i ? `<span class="dev">${esc(i.name)}</span>` : ''}</div><div class="meta">${meta}</div></header>`;
 }
 
 function noMouseHtml() {
