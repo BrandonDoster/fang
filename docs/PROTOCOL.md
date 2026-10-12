@@ -42,24 +42,38 @@ Level: synapse. Transaction id: any value seems accepted (echoed), not fixed 0x1
 | 0f/80, 0f/84 | RGB matrix / brightness | status 03: no RGB on this mouse | synapse |
 | 02/8c | read button bind | `01 <button> <layer>` -> `01 <button> 00 <cat> <len> <value...>` | synapse |
 | 02/0c | write button bind | `01 <button> 01 <cat> <len> <value...>` | synapse |
-| 00/86, 00/87, 00/8e, 00/93, 05/80, 05/81, 05/8a | unknown | | synapse |
+| 00/0e | set polling rate | `01 <rate>`: 01 = 1000 Hz, 02 = 500 Hz | synapse |
+| 00/8e | get polling rate | `01 00` -> `01 <rate>` | synapse |
+| 0b/03 | set lift-off mode | `00 04 <mode>`: 00 preset, 01 asymmetric | synapse |
+| 0b/0b | lift-off preset / mode param | preset: `00 04 01 <lvl>` (00 low, 01 medium, 02 high). asymmetric: `00 04 04 00` | synapse |
+| 0b/05 | asymmetric lift / land distance | `00 04 <lift> <land>` raw units, land < lift | synapse |
+| 00/86, 00/87, 00/93, 05/80, 05/81, 05/8a | unknown | | synapse |
 
 Factory DPI stages: 400, 800, 1600 (active), 3200, 6400.
+
+DPI: `<active>` is 1-based. X and Y are independent (`cap:settings01` set stage 1 to
+X 1000 / Y 1100 = `03 e8 04 4c`). Synapse also sent a single-stage form once
+(`01 01 01 00 04e2 04e2`, count 1) before resending all 5; full 5-stage write is enough.
 
 ## Button binds
 
 Buttons: 01 left, 02 right, 03 wheel, 04 back, 05 forward, 09 scroll up, 0a scroll down,
 60 bottom DPI button.
 
-Categories: 01 mouse (len 01, value = button), 06 DPI (`06 01 06` = cycle). Keyboard is
-02 per Snakecharmer (len 02, `<modifier> <HID usage>`): guess until captured.
+Categories: 01 mouse (len 01, value = button), 02 keyboard (len 02, `<modifier> <HID usage>`),
+06 DPI (`06 01 06` = cycle).
+
+`cap:settings01`: back = F13 `01 04 00 02 02 00 68`, forward = F14 `01 05 00 02 02 00 69`.
+Mouse replied status 02.
 
 Factory layer 0 is identity (left=left ... DPI button=DPI cycle). Layer 1 (Hypershift?)
-reads empty.
+reads empty on a fresh mouse.
 
-Open: byte 2 of the write is `01`, while reads ask for layer `00`/`01` and reply `00`.
-Unclear whether that byte is the layer or a flag. Capture an actual bind change to settle it.
+Open: byte 2. Synapse's first-connect default rewrite used `01`; after that both read
+layers 00 and 01 return the bind with `01`. The user binds in `cap:settings01` used `00`.
+fang copies Synapse: `00` for user binds. Settle with a read-back after fang writes.
 
-## Polling and lift-off
+## Lift-off
 
-Not identified yet. Candidates among the unknown ids above.
+Asymmetric values from `cap:settings01` (lift/land): `0c 0b`, `02 01`, `17 01`, `17 05`,
+`17 16`. Units unknown until matched to the numbers shown in Synapse.
