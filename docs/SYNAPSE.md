@@ -18,8 +18,7 @@ Synapse caches both in Chromium CacheStorage:
 `%LOCALAPPDATA%\Razer\RazerAppEngine\User Data\Default\Service Worker\CacheStorage`. I dumped that
 cache read-only into `$TEMP` and ran it through a JS beautifier. Nothing was executed.
 
-Only product 182 is cached on this machine, so the device table below covers one mouse. Other mice
-need their own `products/<pid>/` module. See "Still unknown".
+§1 covers product 182 in depth. §4 and `docs/devices.json` cover all 74 mice Synapse can load.
 
 Evidence keys used below:
 
@@ -139,18 +138,17 @@ the firmware checking it.
   side is not visible. A fixed 0x1F keeps the high bits 0, i.e. it targets the mouse, which fits
   fang's working reads.
 
-**02/8c reply byte 2 not echoing the requested layer.** Synapse has no layer-specific quirk handling.
-It takes reply byte 2 as the mode. A likely cause with a fixed id:
+**02/8c reply byte 2 not echoing the requested layer.** This is firmware behaviour, not a
+transaction-id or stale-read effect.
 
-1. fang reads layer 1, then layer 0, both as 02/8c.
-2. The GET_REPORT for the second request arrives before the firmware has processed it (status
-   00/01).
-3. The buffer still holds the previous 02/8c reply. It has the same class, id and transaction id,
-   so the host can't tell it is stale.
+- In `captures/settings03.pcapng` (frames 351/354), Synapse uses rotating ids and gets matching ids
+  back. A layer-00 read of "right" still replies with byte 2 = 01.
+- On hardware, byte 2 holds the layer of the most recent write to that button, on both layer reads.
+  The bind data that comes back is correct for the layer that was asked for. Full write-up:
+  PROTOCOL.md, "Hypershift".
 
-Synapse catches this case: the id has moved on, and it also retries while status is 00/01. fang
-should (a) check reply status == 02 and retry GET on 00/01, and (b) rotate the id, or at least
-check that reply args `[0..2]` match the request. **inferred**: not verified on hardware.
+Synapse's parser just stores reply byte 2 as `mode` and has no handling for this, conf **read**.
+Treat reply byte 2 as "last-written layer", not as an echo of the request.
 
 ### Byte 0 of DPI / polling / bind args = profile id
 
@@ -384,15 +382,139 @@ Other class-05 ids:
 | 05/0b | profile reset |
 | 05/0c | profile color |
 
+## 4. All mice Synapse can load
+
+Full facts for every mouse are in `docs/devices.json`, one object per product, each with a `source`
+URL. I fetched these on 2026-10-11 with plain sequential GETs from Razer's public CDN and executed
+nothing.
+
+How the list was built:
+
+1. **Catalog.** `https://apps.razer.com/synapse/dashboard/AvailableDevices.json` lists 332 products.
+   - Each entry has `productId` and optional `dongleId`, `bleId`, `wiredId`, `xBoxId`, `psModeIds`.
+   - Synapse's background manager loads it (`DeviceDetector.getLatestDeviceData`).
+   - It maps any connected PID to its product id ("repId"). The log shows
+     `classified:available:182` for PID 183.
+   - Module URL scheme: `https://apps.razer.com/synapse/products/<productId>/{mw,ui}/`.
+2. **Mouse filter.** A product counts as a mouse when its `mw/index.html` favicon is `MOUSE.svg`.
+   That gives 74 mice. Other icons seen: KEYBOARD, AUDIO, MOUSEMAT, and so on.
+3. **Fetch.** Each mouse's `mw/main.<hash>.js` holds three things:
+   - the `DeviceInfo` object
+   - the polling option list and default DPI/mapping data
+   - the `useFeature(...)` registrations: device class, lift-off engine, HyperPolling
+4. **HyperSpeed multi-device info** comes from `synapse/dashboard/DualDongleCompatibleDevices.json`
+   (cached). It gives the dongle PID and sibling PIDs.
+5. **Button fwIDs** come from the generic table in §1. A `null` fwID in the JSON means the input name
+   (e.g. `DKM_SB_210`, `DKM_HYPERSHIFT`, `DKM_AI_PROMPT`) is not in that table. The per-product
+   `ui/` bundle would have it; I did not fetch those (about 6 MB each).
+
+Facts that hold across all 74, conf **read**:
+
+- Every mouse uses the rzDevice25 command family: plain, Legacy or LegacyNoBrightness. So framing,
+  transaction ids (00..1e, wrap), class ids and bind layouts are the ones in §2.
+- `isDualLinkDevice: true` means the `rzDevice25DualLinkMouse` class. The id sequence is the same.
+- "HyperPolling" in the table is read from the `highSpeedPollingRate` feature:
+  - `isHyperpollingDevice` means 00/40 on a wired or direct connection.
+  - `isHyperpollingWireless` means 00/40 over the mouse's own dongle.
+  - Bare `yes` means 00/40 only on a separate HyperPolling dongle.
+  - Otherwise Synapse uses 00/0e.
+- The Viper 8KHz (0091) UI offers 5000 Hz, which is not in the 00/40 code table. Its encoding is unknown.
+- DPI step `1` (several newer mice) is what the module declares; it is not a parsing error.
+- Mice without a default-mapping array in mw main (e.g. Deathadder Elite 005c, Abyssus) have
+  `buttons: null`.
+- `OBMSlots` is missing on some older mice (legacy class). Treat them as no onboard profiles.
+- Lift-off engines:
+
+  | engine | sequence |
+  |---|---|
+  | orca5 | §2 sequence |
+  | orca5+ | same 0b ids. Symmetric sends state **01**, not 00, before the 0b/0b (`orca5PlusCalibrationEngine`) |
+  | smartPixart, pixart, pixart3349 (class id **01**), philips | other 0b sequences, not decoded here |
+
+| PID | name | dongle | BLE | DPI max / step | polling max | HyperPolling | OBM slots | Hypershift | lift-off engine |
+|---|---|---|---|---|---|---|---|---|---|
+| 0046 | Razer Mamba Elite | - | - | 16000 / 50 | 1000 | - | 0 | - | philips |
+| 0050 | Razer Naga Hex V2 | - | - | 16000 / 1 | 1000 | - | - | - | philips |
+| 0053 | Razer Naga Chroma | - | - | 16000 / 1 | 1000 | - | - | - | philips |
+| 0059 | Razer Lancehead | 005a | - | 16000 / 50 | 1000 | - | 4 | yes | philips |
+| 005c | Razer Deathadder Elite | - | - | 16000 / 50 | 1000 | - | - | - | pixart |
+| 0060 | Razer Lancehead TE | - | - | 16000 / 50 | 1000 | - | 4 | yes | pixart |
+| 0062 | Razer Atheris | 0062 | 0061 | 7200 / 200 | 1000 | - | 1 | yes | pixart |
+| 0063 | Razer Jugan | - | - | 7200 / 100 | - | - | - | - | - |
+| 0064 | Razer Basilisk | - | - | 16000 / 50 | 1000 | - | 4 | yes | pixart |
+| 0065 | Razer Basilisk Essential | - | - | 6400 / 100 | 1000 | - | 1 | yes | pixart |
+| 0067 | RAZER NAGA TRINITY | - | - | 16000 / 50 | 1000 | - | 4 | yes | pixart |
+| 006a | D.VA Razer Abyssus Elite | - | - | 7200 / 100 | - | - | - | - | pixart |
+| 006b | Razer Abyssus Essential | - | - | 7200 / 100 | - | - | - | - | pixart |
+| 006c | Razer Mamba Elite | - | - | 16000 / 50 | 1000 | - | 4 | yes | pixart |
+| 006e | Razer DeathAdder Essential | - | - | 6400 / 100 | 1000 | - | - | - | - |
+| 0070 | Razer Lancehead Wireless | 006f | - | 16000 / 50 | 1000 | - | 4 | yes | pixart |
+| 0071 | Razer DeathAdder Essential | - | - | 6400 / 100 | 1000 | - | - | - | - |
+| 0073 | Razer Mamaba Wireless | 0072 | - | 16000 / 100 | 1000 | - | 4 | yes | smartPixart |
+| 0074 | Razer Abyssus Lite | - | - | 6400 / 100 | 1000 | - | - | - | - |
+| 0075 | Razer Turret Mouse Xbox One Edition | 0904 | - | 16000 / 50 | 1000 | - | 4 | yes | pixart |
+| 0078 | Razer Viper | - | - | 16000 / 50 | 1000 | - | 1 | yes | pixart |
+| 007a | Razer Viper Ultimate | 007b | - | 20000 / 50 | 1000 | - | 4 | yes | - |
+| 007c | Razer DeathAdder V2 Pro | 007d | 008e | 20000 / 50 | 1000 | - | 4 | yes | smartPixart |
+| 0080 | Razer Pro Click | 0077 | 0076 | 16000 / 50 | - | - | 1 | yes | - |
+| 0083 | Razer Basilisk X Hyperspeed | 0083 | 0082 | 16000 / 50 | 1000 | - | 1 | yes | smartPixart |
+| 0084 | RAZER DEATHADDER V2 | - | - | 20000 / 50 | 1000 | - | 4 | yes | - |
+| 0085 | Razer Basilisk V2 | - | - | 20000 / 50 | - | - | 4 | yes | - |
+| 0086 | Razer Basilisk Ultimate | 0088 | - | 20000 / 50 | 1000 | - | 4 | yes | - |
+| 008a | Razer Viper Mini | - | - | 8500 / 100 | 1000 | - | 1 | yes | pixart |
+| 008c | Razer Deathadder V2 Mini | - | - | 8500 / 100 | 1000 | - | 1 | yes | pixart |
+| 008d | RAZER NAGA LEFT-HANDED EDITION | - | - | 20000 / 100 | 1000 | - | 4 | yes | - |
+| 008f | RAZER NAGA PRO | 0090 | 0092 | 20000 / 50 | 1000 | - | 4 | yes | smartPixart |
+| 0091 | Razer Viper 8Khz | - | - | 20000 / 50 | 8000 | wired | 4 | yes | - |
+| 0093 | Razer Naga Classic Edition | - | - | 16000 / 50 | 1000 | - | 4 | yes | pixart |
+| 0094 | Razer Orochi V2 | 0094 | 0095 | 18000 / 50 | 1000 | - | 1 | yes | smartPixart |
+| 0096 | RAZER NAGA X | - | - | 16000 / 50 | 1000 | - | 1 | yes | pixart |
+| 0098 | Razer DeathAdder Essential | - | - | 6400 / 100 | 1000 | - | 1 | yes | - |
+| 0099 | Razer Basilisk V3 | - | - | 26000 / 50 | 1000 | - | 4 | yes | smartPixart |
+| 009a | Razer Pro Click Mini | 009a | 009b | 12000 / 50 | - | - | 1 | yes | - |
+| 009c | Razer DeathAdder V2 X Hyperspeed | 009c | 009d | 14000 / 100 | 1000 | - | - | yes | smartPixart |
+| 009e | Razer Viper Mini Signature Edition | 009f | - | 30000 / 50 | 1000 | wireless | 1 | yes | orca5+ |
+| 00a1 | Razer Deathadder V2 Lite | - | - | 8500 / 100 | 1000 | - | 1 | yes | pixart |
+| 00a3 | Razer Cobra | - | - | 8500 / 100 | 1000 | - | 1 | yes | pixart3349 |
+| 00a5 | RAZER VIPER V2 PRO | 00a6 | - | 30000 / 50 | 1000 | via HP dongle | 1 | yes | orca5 |
+| 00a7 | RAZER NAGA V2 PRO | 00a8 | 00a9 | 30000 / 50 | 1000 | - | 4 | yes | orca5 |
+| 00aa | Razer Basilisk V3 Pro | 00ab | 00ac | 30000 / 50 | 1000 | via HP dongle | 4 | yes | orca5+ |
+| 00af | Razer Cobra Pro | 00b0 | 00b1 | 30000 / 50 | 1000 | via HP dongle | 4 | yes | orca5+ |
+| 00b2 | Razer DeathAdder V3 | - | - | 30000 / 50 | 1000 | wired | 4 | yes | orca5 |
+| 00b4 | Razer Naga V2 Hyperspeed | 00b4 | 00b5 | 30000 / 50 | 1000 | - | 1 | yes | orca5 |
+| 00b6 | Razer DeathAdder V3 Pro | 00b7 | - | 30000 / 50 | 1000 | via HP dongle | 1 | yes | orca5 |
+| 00b8 | Razer Viper V3 HyperSpeed | 00b8 | - | 30000 / 50 | 1000 | via HP dongle | 1 | yes | orca5 |
+| 00b9 | Razer Basilisk V3 X Hyperspeed | 00b9 | 00ba | 18000 / 50 | 1000 | - | 1 | yes | pixart3349 |
+| 00be | Razer DeathAdder V4 Pro | 00bf | - | 45000 / 50 | 8000 | wired+wireless | 1 | yes | orca5+ |
+| 00c0 | Razer Viper V3 Pro | 00c1 | - | 35000 / 50 | 1000 | wireless | 1 | yes | orca5+ |
+| 00c2 | Razer DeathAdder V3 Pro Hyperpolling Technology | 00c3 | - | 30000 / 50 | 1000 | wireless | 1 | yes | orca5 |
+| 00c4 | Razer DeathAdder V3 HyperSpeed | 00c5 | - | 20000 / 50 | 1000 | via HP dongle | 1 | yes | orca5+ |
+| 00c7 | Razer Pro Click V2 Vertical Edition | 00c8 | 00c9 | 30000 / 50 | - | - | 1 | yes | - |
+| 00cb | Razer Basilisk V3 35K | - | - | 35000 / 1 | 1000 | - | 4 | yes | orca5+ |
+| 00cc | Razer Basilisk V3 Pro 35K | 00cd | 00ce | 35000 / 50 | 1000 | via HP dongle | 4 | yes | orca5+ |
+| 00d0 | Razer Pro Click V2 | 00d1 | 00d2 | 30000 / 50 | - | - | 1 | yes | - |
+| 00d3 | Razer Basilisk Mobile | 00d4 | 00d5 | 18000 / 50 | 1000 | - | 1 | yes | pixart3349 |
+| 00d6 | Razer Basilisk V3 Pro 35K Phantom Green Edition | 00d7 | 00d8 | 35000 / 50 | 1000 | via HP dongle | 4 | yes | orca5+ |
+| 00da | Razer Cobra HyperSpeed | 00db | 00dc | 26000 / 50 | 1000 | via HP dongle | 4 | yes | orca5 |
+| 00dd | Razer Krakoff | 00dd | - | 45000 / 1 | 8000 | wireless | 1 | yes | orca5+ |
+| 00de | Razer Viper V3 Pro SE | 00df | - | 35000 / 1 | 1000 | via HP dongle | 1 | yes | orca5+ |
+| 00e0 | Razer Orochi V2 | 00e0 | 00e1 | 18000 / 50 | 1000 | - | 1 | yes | - |
+| 00e2 | Razer Basilisk V4 Pro | 00e3 | 00e4 | 50000 / 1 | 8000 | wired+wireless | 4 | yes | orca5+ |
+| 00e5 | Razer Viper V4 Pro | 00e6 | - | 50000 / 50 | 8000 | wired+wireless | 1 | yes | orca5+ |
+| 00e7 | RAZER NAGA V3 PRO | 00e8 | 00e9 | 30000 / 50 | 1000 | via HP dongle | 4 | yes | orca5+ |
+| 00eb | Razer Basilisk V4 HyperSpeed | 00ea | 00ec | 33000 / 1 | 8000 | wired | 4 | yes | orca5+ |
+| 00ef | Razer DeathAdder V4 Pro Carbon Fiber Edition | 00f0 | - | 50000 / 50 | 8000 | wired+wireless | 1 | yes | orca5+ |
+| 0a22 | Razer Turret Mouse Gears Of War 5 Edition | 0a21 | - | 16000 / 50 | 1000 | - | 4 | yes | pixart |
+| b005 | Razer Viper V4 HyperSpeed | b005 | b006 | 33000 / 50 | 8000 | wireless | 1 | yes | orca5+ |
+| b00a | Razer Basilisk V3 Pro 35K - Xbox 25 Anniversary Edition | b00b | b00c | 35000 / 50 | 1000 | via HP dongle | 4 | yes | orca5+ |
+
 ## Conflicts with PROTOCOL.md
 
 1. **02/0c byte 2** is the layer selector (00 normal, 01 Hypershift), not "mirror". fang's
    "use 00 for user binds" is still correct.
 
-   PROTOCOL.md also says "after that both read layers 00 and 01 return the bind with `01`".
-   Per Synapse's parser, reply byte 2 echoes the mode that was asked for, so a layer-0 read should
-   come back with `00`. Re-check fang's 02/8c read: it may be sending layer 1 for both reads, or
-   reading the wrong reply byte.
+   Reply byte 2 of 02/8c is the layer of the last write to that button, not the requested layer.
+   Captures and hardware both show this; see §2 and PROTOCOL.md "Hypershift". No conflict.
 2. **04/06 stage tail `00 00`** is a Z-DPI field, not padding. The bytes on the wire are the same.
 3. **0b `00 04`** is class id 00 + sensor id 04. It is not a VARSTORE flag.
 4. **07/01** is the battery critical level, a write (`4d` = 30 %). It is not a read of the
@@ -402,11 +524,7 @@ Other class-05 ids:
 
 ## Still unknown
 
-- **Other mice.** Their DeviceInfo, button sets and calibration engines live in separate
-  `apps.razer.com/synapse/products/<pid>/{mw,ui}` modules, which are not cached on this machine.
-  Getting them means downloading public JS from Razer's CDN, or connecting other mice once under
-  Synapse. `products/182/mw` already ships every shared device class and command builder, so the
-  protocol tables above should carry over. Per-device limits should not be assumed to carry over.
+- Per-product `ui/` bundles were not fetched, so a few button fwIDs are `null` and the lift-off ranges of non-orca engines are unknown.
 - Whether profile id 0 means "live, not stored" on DAV3P firmware. Synapse never sends it.
 - Lighting (fn 08) bind layout for mice, and the full Razer-key code table (fn 11).
 - The PID of a HyperPolling dongle for DAV3P. The bundle only checks a feature flag.
