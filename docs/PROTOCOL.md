@@ -76,5 +76,5 @@ fang copies Synapse: `00` for user binds. Settle with a read-back after fang wri
 ## Lift-off
 
 Asymmetric: raw byte = Synapse slider value - 1 (`cap:settings02`: lift 2/13/26 =
-`01`/`0c`/`19`, land 1/12/25 = `00`/`0b`/`18`). Lift slider 1..26 (raw 00..19), land 1..25
+`01`/`0c`/`19`, land 1/12/25 = `00`/`0b`/`18`). Lift slider 2..26 (raw 01..19), land 1..25
 (raw 00..18), land < lift.
