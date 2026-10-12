@@ -27,7 +27,7 @@ Download from the [latest release](../../releases/latest). To build it yourself,
 | OS | Command line | Desktop app | Tested |
 |---|---|---|---|
 | Windows x64 | `fang-windows-x64.exe` | `fang-gui-windows-x64.exe` | Yes |
-| macOS (Apple Silicon and Intel) | `fang-macos-universal` | `fang_<version>_universal.dmg` | Not yet |
+| macOS (Apple Silicon and Intel) | `fang-macos-universal` | `fang_<version>_universal.dmg` | Yes |
 | Linux x64 | `fang-linux-x64` | `.AppImage` (any distro), `.deb`, `.rpm` | No, reports welcome |
 
 The examples below call the command-line tool `fang`; rename the download to match.
